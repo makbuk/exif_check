@@ -1,0 +1,145 @@
+<?php
+
+function exif_check_form_addproblem_node_form_alter(&$form, &$form_state, $form_id) {
+	$form['field_photo']['#element_validate'][] = 'exif_check_validate_function';
+}
+
+
+function exif_check_validate_function($element, &$form, &$form_state){
+	$coordinates = array();
+	
+	$lang = $element['#language'];
+	foreach (element_children($element[$lang]) as $key) {
+    	$fid = $element[$lang][$key]['#value']['fid'];
+		if ($fid > 0){
+			$url = exif_check_get_file_url($fid);
+			
+			if (!empty($url) && (!empty(check_gps($url)))) {
+				array_push($coordinates, get_latlon($url));
+			}
+		}
+	}
+	
+	if (!empty($coordinates)){
+		$marker = GetCenterFromDegrees($coordinates);
+		exif_check_add_marker($marker);
+	} else {
+		drupal_set_message(t('Photo without GPS coordinates, please upload another photo.'),'error');
+		//form_set_error('field_photo', t('Photo without GPS coordinates, please upload another photo.')); 
+	}
+	
+}
+
+
+function exif_check_get_file_url($fid) {
+	$file = file_load($fid);
+	
+	if (!$file) {
+		form_set_error('field_photo', t('File not found.'));
+        return false;
+    }
+return file_create_url($file->uri);
+}
+
+
+function check_gps($photoexif){
+	$exif = exif_read_data($photoexif, 'IFD0');
+	if (!empty($exif['GPSLatitude']) && !empty($exif['GPSLongitude'])){
+		return true;
+	} else { 
+		return false; 
+	}
+}
+
+
+function get_latlon($lldata){
+	$exif = exif_read_data($lldata);
+	
+	$lat = getGps($exif["GPSLatitude"], $exif['GPSLatitudeRef']);
+	$lon = getGps($exif["GPSLongitude"], $exif['GPSLongitudeRef']);
+	
+return array ($lat, $lon);
+}
+
+
+//http://stackoverflow.com/questions/2526304/php-extract-gps-exif-data
+function getGps($exifCoord, $hemi) {
+
+    $degrees = count($exifCoord) > 0 ? gps2Num($exifCoord[0]) : 0;
+    $minutes = count($exifCoord) > 1 ? gps2Num($exifCoord[1]) : 0;
+    $seconds = count($exifCoord) > 2 ? gps2Num($exifCoord[2]) : 0;
+
+    $flip = ($hemi == 'W' or $hemi == 'S') ? -1 : 1;
+
+    return $flip * ($degrees + $minutes / 60 + $seconds / 3600);
+
+}
+
+function gps2Num($coordPart) {
+
+    $parts = explode('/', $coordPart);
+
+    if (count($parts) <= 0)
+        return 0;
+
+    if (count($parts) == 1)
+        return $parts[0];
+
+    return floatval($parts[0]) / floatval($parts[1]);
+}
+
+//http://stackoverflow.com/questions/6671183/calculate-the-center-point-of-multiple-latitude-longitude-coordinate-pairs
+function GetCenterFromDegrees($data)
+{
+    if (!is_array($data)) return FALSE;
+
+    $num_coords = count($data);
+
+    $X = 0.0;
+    $Y = 0.0;
+    $Z = 0.0;
+
+    foreach ($data as $coord)
+    {
+        $lat = $coord[0] * pi() / 180;
+        $lon = $coord[1] * pi() / 180;
+
+        $a = cos($lat) * cos($lon);
+        $b = cos($lat) * sin($lon);
+        $c = sin($lat);
+
+        $X += $a;
+        $Y += $b;
+        $Z += $c;
+    }
+
+    $X /= $num_coords;
+    $Y /= $num_coords;
+    $Z /= $num_coords;
+
+    $lon = atan2($Y, $X);
+    $hyp = sqrt($X * $X + $Y * $Y);
+    $lat = atan2($Z, $hyp);
+
+    return array($lat * 180 / pi(), $lon * 180 / pi());
+}
+
+
+function exif_check_add_marker($marker) {
+	//dpm($marker);
+	drupal_add_js(drupal_get_path('module', 'exif_check').'/exif_check.js'); 
+	drupal_add_js(array('exif_check' => array('marker' => $marker)), array('type' => 'setting'));
+	/*drupal_add_js($module_path . '/exif_check.js', array('scope' => 'footer'));
+	
+	return array(
+    	'#type' => 'ajax',
+    	'#commands' => array(
+      	array(
+        	'command' => 'add_marker',
+       		'latlon' => $marker,
+      	),
+    	),
+  	);
+	//drupal_add_js(array('testmodule' => array('url' => $url)), array('type' => 'setting'));	
+	*/
+}

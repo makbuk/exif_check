@@ -1,0 +1,5 @@
+name = EXIF check
+description = Module check if uploaded image(s) has GPS coordinates and add new marker to Leaflet map
+core = 7.x
+
+version = "7.x-0.1"
